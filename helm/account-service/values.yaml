@@ -1,0 +1,34 @@
+replicaCount: 2
+
+image:
+  repository: account-service
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"
+    cpu: "200m"
+
+config:
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: finops
+  DB_USER: finops_user
+  PORT: "3000"
+
+livenessProbe:
+  initialDelayedSeconds: 10
+  periodSeconds: 15
+
+readinessProbe:
+  initialDelayedSeconds: 5
+  periodSeconds: 10

@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: finops
+data:
+  default.conf: |
+    upstream account_service {
+        server account-service:80;
+    }
+
+    upstream transaction_service {
+        server transaction-service:80;
+    }
+
+    server {
+        listen 80;
+
+        location /accounts/ {
+            proxy_pass http://account_service;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location /transactions/ {
+            proxy_pass http://transaction_service;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location /health {
+            return 200 'ok';
+            add_header Content-Type text/plain;
+        }
+    }
