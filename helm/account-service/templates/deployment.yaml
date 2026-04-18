@@ -18,7 +18,7 @@ spec:
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - containerPort: {{ .Values.service.targetPort }}
+            - containerPort: {{ .Values.service.targetPort | int }}
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config
@@ -32,12 +32,12 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: { { .Values.service.targetPort } }
-            initialDelaySeconds: { { .Values.livenessProbe.initialDelaySeconds } }
-            periodSeconds: { { .Values.livenessProbe.periodSeconds } }
+              port: {{ .Values.service.targetPort | int }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
           readinessProbe:
             httpGet:
               path: /health
-              port: { { .Values.service.targetPort } }
-            initialDelaySeconds: { { .Values.readinessProbe.initialDelaySeconds } }
-            periodSeconds: { { .Values.readinessProbe.periodSeconds } }
+              port: {{ .Values.service.targetPort | int }}
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}

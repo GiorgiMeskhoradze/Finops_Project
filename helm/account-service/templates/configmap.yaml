@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  namespace: finops
+data:
+  DB_HOST: {{ .Values.config.DB_HOST }}
+  DB_PORT: {{ .Values.config.DB_PORT | quote }}
+  DB_NAME: {{ .Values.config.DB_NAME }}
+  DB_USER: {{ .Values.config.DB_USER }}
+  PORT: {{ .Values.config.PORT | quote }}

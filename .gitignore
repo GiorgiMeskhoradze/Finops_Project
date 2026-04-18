@@ -1,0 +1,39 @@
+# JetBrains
+.idea/
+*.iml
+
+# Node
+node_modules/
+npm-debug.log*
+coverage/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+*.egg-info/
+.pytest_cache/
+coverage.xml
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!terraform.tfvars.example
+.terraform/
+.terraform.lock.hcl
+
+# Helm
+*.tgz
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+*.pem
+*.key
+secrets.yaml
+*secret*
