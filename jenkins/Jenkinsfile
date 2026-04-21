@@ -1,3 +1,186 @@
 pipeline {
     agent any
+
+    environment {
+        AWS_REGION    = 'eu-central-1'
+        ECR_REGISTRY  = '054867037615.dkr.ecr.eu-central-1.amazonaws.com'
+        IMAGE_TAG     = "${env.BUILD_NUMBER}"
+        CLUSTER_NAME  = 'finops-dev-cluster'
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Test') {
+            parallel {
+                stage('Test account-service') {
+                    steps {
+                        dir('services/account-service') {
+                            sh 'npm install'
+                            sh 'npm test'
+                        }
+                    }
+                    post {
+                        always {
+                            junit 'services/account-service/coverage/junit.xml'
+                        }
+                    }
+                }
+
+                stage('Test transaction-service') {
+                    steps {
+                        dir('services/transaction-service') {
+                            sh 'pip3 install -r requirements.txt'
+                            sh 'pytest test/ -v --junitxml=coverage/junit.xml --cov=app --cov-report=xml'
+                        }
+                    }
+                    post {
+                        always {
+                            junit 'services/transaction-service/coverage/junit.xml'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube Scan') {
+            parallel {
+                stage('Scan account-service') {
+                    steps {
+                        dir('services/account-service') {
+                            withSonarQubeEnv('SonarQube') {
+                                sh '''
+                                    sonar-scanner \
+                                        -Dsonar.projectKey=finops-account-service \
+                                        -Dsonar.sources=src \
+                                        -Dsonar.tests=test \
+                                        -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                                '''
+                            }
+                        }
+                    }
+                }
+
+                stage('Scan transaction-service') {
+                    steps {
+                        dir('services/transaction-service') {
+                            withSonarQubeEnv('SonarQube') {
+                                sh '''
+                                    sonar-scanner \
+                                        -Dsonar.projectKey=finops-transaction-service \
+                                        -Dsonar.sources=app \
+                                        -Dsonar.tests=test \
+                                        -Dsonar.python.coverage.reportPaths=coverage.xml
+                                '''
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            parallel {
+                stage('Build account-service') {
+                    steps {
+                        dir('services/account-service') {
+                            sh """
+                                docker build -t ${ECR_REGISTRY}/finops/account-service:${IMAGE_TAG} .
+                                docker tag ${ECR_REGISTRY}/finops/account-service:${IMAGE_TAG} \
+                                           ${ECR_REGISTRY}/finops/account-service:latest
+                            """
+                        }
+                    }
+                }
+
+                stage('Build transaction-service') {
+                    steps {
+                        dir('services/transaction-service') {
+                            sh """
+                                docker build -t ${ECR_REGISTRY}/finops/transaction-service:${IMAGE_TAG} .
+                                docker tag ${ECR_REGISTRY}/finops/transaction-service:${IMAGE_TAG} \
+                                           ${ECR_REGISTRY}/finops/transaction-service:latest
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Push to ECR') {
+            steps {
+                withAWS(credentials: 'aws-credentials', region: "${AWS_REGION}") {
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | \
+                        docker login --username AWS --password-stdin ${ECR_REGISTRY}
+
+                        docker push ${ECR_REGISTRY}/finops/account-service:${IMAGE_TAG}
+                        docker push ${ECR_REGISTRY}/finops/account-service:latest
+
+                        docker push ${ECR_REGISTRY}/finops/transaction-service:${IMAGE_TAG}
+                        docker push ${ECR_REGISTRY}/finops/transaction-service:latest
+                    """
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                withAWS(credentials: 'aws-credentials', region: "${AWS_REGION}") {
+                    sh """
+                        aws eks update-kubeconfig \
+                            --region ${AWS_REGION} \
+                            --name ${CLUSTER_NAME}
+
+                        kubectl apply -f k8s/namespace.yaml
+
+                        helm upgrade --install postgres ./helm/postgres \
+                            --namespace finops \
+                            --wait
+
+                        helm upgrade --install account-service ./helm/account-service \
+                            --namespace finops \
+                            --set image.tag=${IMAGE_TAG} \
+                            --wait
+
+                        helm upgrade --install transaction-service ./helm/transaction-service \
+                            --namespace finops \
+                            --set image.tag=${IMAGE_TAG} \
+                            --wait
+
+                        helm upgrade --install gateway ./helm/gateway \
+                            --namespace finops \
+                            --wait
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline succeeded! Build ${IMAGE_TAG} deployed to EKS."
+        }
+
+        failure {
+            echo "Pipeline failed! Check Jenkins logs."
+        }
+
+        always {
+            sh 'docker system prune -f'
+        }
+    }
 }

@@ -1,0 +1,98 @@
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install Java
+  apt:
+    name: openjdk-17-jdk
+    state: present
+
+- name: Add Jenkins Repository Key
+  apt_key:
+    url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+    state: present
+
+- name: Add Jenkins Repository
+  apt_repository:
+    repo: deb https://pkg.jenkins.io/debian-stable binary/
+    state: present
+
+- name: Install Jenkins
+  apt:
+    name: jenkins
+    state: present
+    update_cache: yes
+
+- name: Start and Enable Jenkins
+  systemd:
+    name: jenkins
+    state: started
+    enabled: yes
+
+- name: Install Docker Dependencies
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+    state: present
+
+- name: Add Docker GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: Add Docker Repository
+  apt_repository:
+    repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+
+- name: Install Docker
+  apt:
+    name: docker-ce
+    state: present
+    update_cache: yes
+
+- name: Add Jenkins user to Docker group
+  user:
+    name: jenkins
+    groups: docker
+    append: yes
+
+- name: Start and Enable Docker
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Install kubectl
+  shell: |
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    chmod +x kubectl
+    mv kubectl /usr/local/bin/kubectl
+  args:
+    creates: /usr/local/bin/helm
+
+- name: Install AWS CLI
+  shell: |
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    unzip awscliv2.zip
+  args:
+    creates: /usr/local/bin/aws
+
+- name: Install sonar-scanner
+  shell: |
+    curl -LO https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
+    unzip sonar-scanner-cli-5.0.1.3006-linux.zip -d /opt/
+    ln -sf /opt/sonar-scanner-5.0.1.3006-linux/bin/sonar-scanner /usr/local/bin/sonar-scanner
+  args:
+    creates: /usr/local/bin/sonar-scanner
+
+- name: Restart Jenkins to Apply Docker group
+  systemd:
+    name: jenkins
+    state: restarted
+    
