@@ -4,8 +4,8 @@ module "vpc" {
   project_name    = var.project_name
   environment     = var.environment
   vpc_cidr        = var.vpc_cidr
-  private_subnets = var.private_subnets
-  public_subnets  = var.public_subnets
+  private_subnets = var.private_subnet_cidrs
+  public_subnets  = var.public_subnet_cidrs
 }
 
 module "eks" {

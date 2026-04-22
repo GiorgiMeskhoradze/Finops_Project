@@ -14,12 +14,12 @@ private_subnet_cidrs = {
   "eu-central-1b" = "10.0.2.0/24"
 }
 
-eks_instance_type = "c7i-flex.large"
+eks_instance_type = "t3.small"
 eks_desired_size  = 2
 eks_min_size      = 1
 eks_max_size      = 3
 
 ami                  = "ami-05852c5f195d545ea"
-jenkins_instance_type = "c7i-flex.large"
+jenkins_instance_type = "m7i-flex.large"
 key_name             = "myDevKey"
 allowed_cidr         = "188.123.129.60/32"

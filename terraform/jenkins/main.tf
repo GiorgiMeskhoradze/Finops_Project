@@ -27,6 +27,15 @@ resource "aws_vpc_security_group_ingress_rule" "jenkins_ui" {
   cidr_ipv4         = var.allowed_cidr
 }
 
+resource "aws_vpc_security_group_ingress_rule" "sonarqube_ui" {
+  security_group_id = aws_security_group.jenkins_sg.id
+  description       = "SonarUI"
+  from_port         = 9000
+  to_port           = 9000
+  ip_protocol       = "tcp"
+  cidr_ipv4         = var.allowed_cidr
+}
+
 resource "aws_vpc_security_group_egress_rule" "jenkins_outbound" {
   security_group_id = aws_security_group.jenkins_sg.id
   description       = "Allow all outbound"
@@ -43,7 +52,7 @@ resource "aws_instance" "jenkins" {
 
   root_block_device {
     volume_size = 30
-    volume_type = "gp2"
+    volume_type = "gp3"
   }
 
   tags = {

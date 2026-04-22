@@ -67,3 +67,4 @@ variable "allowed_cidr" {
   description = "Your IP to allow SSH and Jenkins UI access"
   type        = string
 }
+
