@@ -39,8 +39,14 @@ pipeline {
                 stage('Test transaction-service') {
                     steps {
                         dir('services/transaction-service') {
-                            sh 'pip3 install -r requirements.txt'
-                            sh 'pytest test/ -v --junitxml=coverage/junit.xml --cov=app --cov-report=xml'
+                            sh '''
+                                python3 -m venv venv
+                                venv/bin/pip install -r requirements.txt
+                                venv/bin/pytest test/ -v \
+                                    --junitxml=coverage/junit.xml \
+                                    --cov=app \
+                                    --cov-report=xml
+                            '''
                         }
                     }
                     post {
