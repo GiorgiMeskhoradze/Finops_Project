@@ -1,7 +1,8 @@
 # ---------------------------------------------------------
-# 1. Base Dependencies & Java
+# 1. Base Dependencies
 # ---------------------------------------------------------
-- name: Install Base Dependencies and Java
+
+- name: Install Base Dependencies
   ansible.builtin.apt:
     name:
       - fontconfig
@@ -11,28 +12,94 @@
       - gnupg
       - lsb-release
       - unzip
+      - python3
+      - python3-pip
     state: present
     update_cache: yes
 
 # ---------------------------------------------------------
-# 2. Docker Repository Setup
+# 2. Install Node.js (YOU WERE MISSING THIS)
 # ---------------------------------------------------------
-- name: Download Docker GPG key
+
+- name: Add NodeSource repo
+  ansible.builtin.get_url:
+    url: https://deb.nodesource.com/setup_20.x
+    dest: /tmp/node_setup.sh
+    mode: '0755'
+
+- name: Run NodeSource setup
+  ansible.builtin.command: bash /tmp/node_setup.sh
+
+- name: Install Node.js
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+
+# ---------------------------------------------------------
+# 3. Jenkins Installation (HOST ONLY)
+# ---------------------------------------------------------
+
+- name: Create keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Add Adoptium GPG key (Java 21)
+  ansible.builtin.get_url:
+    url: https://packages.adoptium.net/artifactory/api/gpg/key/public
+    dest: /etc/apt/keyrings/adoptium.asc
+    mode: '0644'
+
+- name: Add Adoptium repo
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/adoptium.asc] https://packages.adoptium.net/artifactory/deb {{ ansible_distribution_release }} main"
+    state: present
+
+- name: Install Java 21
+  ansible.builtin.apt:
+    name: temurin-21-jdk
+    state: present
+    update_cache: yes
+
+- name: Add Jenkins key
+  ansible.builtin.get_url:
+    url: https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
+    dest: /etc/apt/keyrings/jenkins.asc
+    mode: '0644'
+
+- name: Add Jenkins repo
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/jenkins.asc] https://pkg.jenkins.io/debian-stable binary/"
+    state: present
+
+- name: Install Jenkins
+  ansible.builtin.apt:
+    name: jenkins
+    state: present
+    update_cache: yes
+
+- name: Enable and start Jenkins
+  ansible.builtin.systemd:
+    name: jenkins
+    enabled: yes
+    state: started
+
+# ---------------------------------------------------------
+# 4. Docker Setup
+# ---------------------------------------------------------
+
+- name: Add Docker GPG key
   ansible.builtin.shell:
     cmd: curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-keyring.gpg
     creates: /usr/share/keyrings/docker-keyring.gpg
 
-- name: Add Docker repository
+- name: Add Docker repo
   ansible.builtin.apt_repository:
     repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-keyring.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
     state: present
-    filename: docker
-    update_cache: yes
 
-# ---------------------------------------------------------
-# 3. Install Docker
-# ---------------------------------------------------------
-- name: Install Docker packages
+- name: Install Docker
   ansible.builtin.apt:
     name:
       - docker-ce
@@ -41,104 +108,40 @@
     state: present
     update_cache: yes
 
-- name: Enable and start Docker
+- name: Start Docker
   ansible.builtin.systemd:
     name: docker
     state: started
     enabled: yes
 
-- name: Add ubuntu user to docker group
+# 🔥 CRITICAL FIX (you missed this before)
+- name: Allow Jenkins to use Docker
   ansible.builtin.user:
-    name: ubuntu
+    name: jenkins
     groups: docker
     append: yes
 
+- name: Restart Jenkins (needed after group change)
+  ansible.builtin.systemd:
+    name: jenkins
+    state: restarted
 
 # ---------------------------------------------------------
-# 3.1 Kernel tuning for SonarQube (REQUIRED)
+# 5. Kernel tuning (SonarQube)
 # ---------------------------------------------------------
-- name: Set vm.max_map_count for Elasticsearch
+
+- name: Set vm.max_map_count
   ansible.posix.sysctl:
     name: vm.max_map_count
     value: "262144"
     state: present
     reload: yes
 
-- name: Set file descriptor limits
-  ansible.builtin.blockinfile:
-    path: /etc/security/limits.conf
-    block: |
-      * soft nofile 65536
-      * hard nofile 65536
-
 # ---------------------------------------------------------
-# 4. Jenkins via Docker
-# ---------------------------------------------------------
-- name: Create Jenkins volume directory
-  ansible.builtin.file:
-    path: /var/jenkins_home
-    state: directory
-    mode: '0777'
-
-- name: Run Jenkins container
-  community.docker.docker_container:
-    name: jenkins
-    image: jenkins/jenkins:lts
-    state: started
-    restart_policy: always
-    ports:
-      - "8080:8080"
-      - "50000:50000"
-    volumes:
-      - /var/jenkins_home:/var/jenkins_home
-
-# ---------------------------------------------------------
-# 5. CLI Tools
-# ---------------------------------------------------------
-- name: Install kubectl
-  ansible.builtin.get_url:
-    url: "https://dl.k8s.io/release/{{ lookup('pipe', 'curl -L -s https://dl.k8s.io/release/stable.txt') }}/bin/linux/amd64/kubectl"
-    dest: /usr/local/bin/kubectl
-    mode: '0755'
-
-- name: Download AWS CLI
-  ansible.builtin.get_url:
-    url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
-    dest: /tmp/awscliv2.zip
-
-- name: Unarchive AWS CLI
-  ansible.builtin.unarchive:
-    src: /tmp/awscliv2.zip
-    dest: /tmp
-    remote_src: yes
-
-- name: Install AWS CLI
-  ansible.builtin.command:
-    cmd: /tmp/aws/install --update
-    creates: /usr/local/bin/aws
-
-- name: Download Sonar Scanner
-  ansible.builtin.get_url:
-    url: https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
-    dest: /tmp/sonar-scanner.zip
-
-- name: Unarchive Sonar Scanner
-  ansible.builtin.unarchive:
-    src: /tmp/sonar-scanner.zip
-    dest: /opt/
-    remote_src: yes
-
-- name: Symlink Sonar Scanner
-  ansible.builtin.file:
-    src: /opt/sonar-scanner-5.0.1.3006-linux/bin/sonar-scanner
-    dest: /usr/local/bin/sonar-scanner
-    state: link
-
-# ---------------------------------------------------------
-# 6. SonarQube Server (Docker)
+# 6. SonarQube (Docker ONLY)
 # ---------------------------------------------------------
 
-- name: Create SonarQube directories
+- name: Create SonarQube dirs
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -148,23 +151,29 @@
     - /opt/sonarqube/extensions
     - /opt/sonarqube/logs
 
-- name: Run SonarQube container
+- name: Run SonarQube
   community.docker.docker_container:
     name: sonarqube
     image: sonarqube:lts-community
     state: started
     restart_policy: always
-
     ports:
       - "9000:9000"
-
     ulimits:
       - nofile:65536:65536
-
     env:
       SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
-
     volumes:
       - /opt/sonarqube/data:/opt/sonarqube/data
       - /opt/sonarqube/extensions:/opt/sonarqube/extensions
       - /opt/sonarqube/logs:/opt/sonarqube/logs
+
+# ---------------------------------------------------------
+# 7. CLI Tools (optional but useful)
+# ---------------------------------------------------------
+
+- name: Install kubectl
+  ansible.builtin.get_url:
+    url: https://dl.k8s.io/release/v1.28.0/bin/linux/amd64/kubectl
+    dest: /usr/local/bin/kubectl
+    mode: '0755'
